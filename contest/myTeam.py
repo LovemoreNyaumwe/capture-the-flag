@@ -72,17 +72,28 @@ class DummyAgent(CaptureAgent):
     CaptureAgent.registerInitialState in captureAgents.py.
     '''
     CaptureAgent.registerInitialState(self, gameState)
-
+    self.start = gameState.getAgentPosition(self.index)
     '''
     Your initialization code goes here, if you need any.
     '''
 
 
   def chooseAction(self, gameState):
+    #Always try to go right agent. If right not available, picks a random action from the rest (ignores stop)
     """
     Picks among actions randomly.
     """
     actions = gameState.getLegalActions(self.index)
+    capsules = self.getCapsules(gameState)
+    # dis = self.getMazeDistance(gameState.getAgentPosition(self.index), capsules[0])
+    print actions
+    actions.remove("Stop")
+    # print actions
+
+    if "East" in actions:
+      return 'East'
+    # else:
+    #   return random.choice(["North", "South"])
 
     '''
     You should change this in your own agent.
