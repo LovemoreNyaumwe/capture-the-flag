@@ -65,6 +65,7 @@ class ReflexCaptureAgent(CaptureAgent):
         CaptureAgent.registerInitialState(self, gameState)
         self.Xmidpoint = ((gameState.getWalls().asList()[-1][0] + 1) / 2) - 1
         self.Ydist = gameState.getWalls().asList()[-1][1]
+        self.InitialCapsuleList = self.getCapsules(gameState)
 
 
     def chooseAction(self, gameState):
@@ -72,7 +73,6 @@ class ReflexCaptureAgent(CaptureAgent):
     Picks among the actions with the highest Q(s,a).
     """
         actions = gameState.getLegalActions(self.index)
-        print actions
         # You can profile your evaluation time by uncommenting these lines
         # start = time.time()
         values = [self.evaluate(gameState, a) for a in actions]
@@ -129,6 +129,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
 
     def getFeatures(self, gameState, action):
 
+        actions = gameState.getLegalActions(self.index)
         # initialize all features as zero
         features = util.Counter()
         # successor is a gameState object
@@ -138,19 +139,20 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         # list of all capsule coordinates - in tuple form - that our team can eat
         capsuleList = self.getCapsules(successor)
         # indices of opponents
-        opponents = self.getOpponents(gameState)
+        opponents = self.getOpponents(successor)
         # position of our offensive agent after taking the given action
         pos = successor.getAgentPosition(self.index)
 
         # successorScore feature...idk what this does, it was in baselineTeam.
         # system breaks without it
-        features['successorScore'] = -len(foodList) - len(capsuleList)  # self.getScore(successor)
+        features['successorScore'] = - len(foodList) - 2 * len(capsuleList) # self.getScore(successor)
 
         # ExactOpponentGhostDist feature...If we know the exact distance of either or both
         # opponents, then the feature is the distance to the nearest opponent
         distances = []
+        features['ExactOpponentGhostDist'] = 0
         for opp in opponents:
-            observation = self.getCurrentObservation().getAgentState(opp).getPosition()
+            observation = gameState.getAgentPosition(opp)
             if observation is not None:
                 if observation[0] > self.Xmidpoint:
                     distances.append(self.getMazeDistance(observation, pos))
@@ -165,39 +167,46 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
 
         # distToNearestFood feature... the feature is the distance to the nearest food
         # distToNearestFood2 feature... the feature is the distance to the 2nd nearest food
+        features['distToNearestFood'] = 0
+        features['distToNearestFood2'] = 0
         if len(foodList) > 0:
-            myPos = successor.getAgentState(self.index).getPosition()
-            sort = sorted([self.getMazeDistance(myPos, food) for food in foodList])
+            sort = sorted([self.getMazeDistance(pos, food) for food in foodList])
             minDistanceFood = sort[0]
             if len(sort) > 1:
                 minDistanceFood2 = sort[1]
-                features['distToNearestFood2'] = minDistanceFood2
+                if minDistanceFood2 != minDistanceFood:
+                    features['distToNearestFood2'] = minDistanceFood2
             features['distToNearestFood'] = minDistanceFood
 
         # distToNearestCapsule feature... the feature is the distance to the nearest capsule
+        features['distToNearestCapsule'] = 0
+        capsuleDist = []
         if len(capsuleList) > 0:
-            myPos = successor.getAgentState(self.index).getPosition()
-            minDistanceCapsule = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
+            for capsule in capsuleList:
+                capsuleDist.append(self.getMazeDistance(pos, capsule))
+                minDistanceCapsule = min(capsuleDist)
             features['distToNearestCapsule'] = minDistanceCapsule
 
         # numFoodCarry feature... this feature is the number of food that our pacman is carrying
         numCarrying = successor.getAgentState(self.index).numCarrying
         features['numFoodCarry'] = numCarrying
 
+        print action, features
+
         return features
 
     def getWeights(self, gameState, action):
         successor = self.getSuccessor(gameState, action)
+        pos = successor.getAgentPosition(self.index)
         foodList = self.getFood(successor).asList()
         if len(foodList) <= 2:
             return {'successorScore': 100, 'distToNearestFood': 0, 'distToNearestFood2': 0,
                 'distToNearestCapsule': 0, 'ExactOpponentGhostDist': 20000, 'distToNearestHome': -7000,
                 'numFoodCarry': 0}
         else:
-            return {'successorScore': 1000, 'distToNearestFood': -3, 'distToNearestFood2': -2,
-                    'distToNearestCapsule': -1, 'ExactOpponentGhostDist': 2000, 'distToNearestHome': 0,
-                    'numFoodCarry': 0}
-
+            return {'successorScore': 1000, 'distToNearestFood': -235/12, 'distToNearestFood2': 0,
+                'distToNearestCapsule': -485/12, 'ExactOpponentGhostDist': 0, 'distToNearestHome': 0,
+                'numFoodCarry': 0}
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
     """
