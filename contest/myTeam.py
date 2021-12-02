@@ -66,7 +66,11 @@ class ReflexCaptureAgent(CaptureAgent):
         self.Xmidpoint = ((gameState.getWalls().asList()[-1][0] + 1) / 2) - 1
         self.Ydist = gameState.getWalls().asList()[-1][1]
         self.InitialCapsuleList = self.getCapsules(gameState)
-
+        self.successorScoreWeight = 1000
+        self.multiplier = 1.005
+        self.nearestFoodWeight = float(self.successorScoreWeight) / (49 + self.multiplier)
+        self.nearestCapsuleWeight = self.nearestFoodWeight * self.multiplier
+        self.opponentIndices = self.getOpponents(gameState)
 
     def chooseAction(self, gameState):
         """
@@ -129,7 +133,6 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
 
     def getFeatures(self, gameState, action):
 
-        actions = gameState.getLegalActions(self.index)
         # initialize all features as zero
         features = util.Counter()
         # successor is a gameState object
@@ -138,20 +141,14 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         foodList = self.getFood(successor).asList()
         # list of all capsule coordinates - in tuple form - that our team can eat
         capsuleList = self.getCapsules(successor)
-        # indices of opponents
-        opponents = self.getOpponents(successor)
         # position of our offensive agent after taking the given action
         pos = successor.getAgentPosition(self.index)
-
-        # successorScore feature...idk what this does, it was in baselineTeam.
-        # system breaks without it
-        features['successorScore'] = - len(foodList) - 2 * len(capsuleList) # self.getScore(successor)
 
         # ExactOpponentGhostDist feature...If we know the exact distance of either or both
         # opponents, then the feature is the distance to the nearest opponent
         distances = []
         features['ExactOpponentGhostDist'] = 0
-        for opp in opponents:
+        for opp in self.opponentIndices:
             observation = gameState.getAgentPosition(opp)
             if observation is not None:
                 if observation[0] > self.Xmidpoint:
@@ -191,7 +188,13 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         numCarrying = successor.getAgentState(self.index).numCarrying
         features['numFoodCarry'] = numCarrying
 
-        print action, features
+        # successorScore feature... this makes sure that our agent eats the food/capsule with next action
+        # even though the nearestFood/nearestCapsule feature can spike when evaluating its next action
+        num = self.algo(50, self.successorScoreWeight,
+                        self.nearestFoodWeight)
+        features['successorScore'] = - len(foodList) - (num * len(capsuleList))  # self.getScore(successor)
+
+        # print action, features
 
         return features
 
@@ -199,14 +202,33 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         successor = self.getSuccessor(gameState, action)
         pos = successor.getAgentPosition(self.index)
         foodList = self.getFood(successor).asList()
+        something = successor.getAgentState(self.opponentIndices[0])
         if len(foodList) <= 2:
-            return {'successorScore': 100, 'distToNearestFood': 0, 'distToNearestFood2': 0,
-                'distToNearestCapsule': 0, 'ExactOpponentGhostDist': 20000, 'distToNearestHome': -7000,
-                'numFoodCarry': 0}
+            return {'successorScore': 0, 'distToNearestFood': 0, 'distToNearestFood2': 0,
+                    'distToNearestCapsule': 0, 'ExactOpponentGhostDist': 10, 'distToNearestHome': -20,
+                    'numFoodCarry': 0}
         else:
-            return {'successorScore': 1000, 'distToNearestFood': -235/12, 'distToNearestFood2': 0,
-                'distToNearestCapsule': -485/12, 'ExactOpponentGhostDist': 0, 'distToNearestHome': 0,
-                'numFoodCarry': 0}
+            # if being chased
+            if self.getFeatures(gameState, action)['ExactOpponentGhostDist'] != 0:
+                return {'successorScore': 0,
+                        'distToNearestFood': 0,
+                        'distToNearestFood2': 0,
+                        'distToNearestCapsule': 0,
+                        'ExactOpponentGhostDist': 10, 'distToNearestHome': -20, 'numFoodCarry': 0}
+            else:
+                return {'successorScore': self.successorScoreWeight,
+                        'distToNearestFood': -self.nearestFoodWeight,
+                        'distToNearestFood2': 0,
+                        'distToNearestCapsule': -self.nearestCapsuleWeight,
+                        'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0}
+
+    def algo(self, distToNearestFood, successorScoreWeight, NearestFoodWeight):
+        x = (distToNearestFood - 1) * successorScoreWeight
+        y = (distToNearestFood - 1) * (distToNearestFood - 1)
+        z = NearestFoodWeight
+        c = (x - (y * z) + z) / float(successorScoreWeight)
+        return c
+
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
     """
