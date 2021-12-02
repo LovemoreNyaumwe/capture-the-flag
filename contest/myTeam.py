@@ -63,22 +63,20 @@ class ReflexCaptureAgent(CaptureAgent):
     def registerInitialState(self, gameState):
         self.start = gameState.getAgentPosition(self.index)
         CaptureAgent.registerInitialState(self, gameState)
-        #Solved for now.
         self.team = "Red"
         if self.getTeam(gameState)[0] % 2 == 0:
-          self.Xmidpoint = ((gameState.getWalls().asList()[-1][0] + 1) / 2) - 1
+            self.Xmidpoint = ((gameState.getWalls().asList()[-1][0] + 1) / 2) - 1
         else:
-          self.Xmidpoint = ((gameState.getWalls().asList()[-1][0] + 1) / 2)
-          self.team = "Blue"
-        # print self.Xmidpoint
+            self.Xmidpoint = ((gameState.getWalls().asList()[-1][0] + 1) / 2)
+            self.team = "Blue"
         self.Ydist = gameState.getWalls().asList()[-1][1]
         self.InitialCapsuleList = self.getCapsules(gameState)
         self.successorScoreWeight = 1000
-        # How much more important capsules are than food
-        self.multiplier = 2
+        self.multiplier = 1.005
         self.nearestFoodWeight = float(self.successorScoreWeight) / (49 + self.multiplier)
         self.nearestCapsuleWeight = self.nearestFoodWeight * self.multiplier
         self.opponentIndices = self.getOpponents(gameState)
+        self.prevAction = []
 
     def chooseAction(self, gameState):
         """
@@ -92,7 +90,9 @@ class ReflexCaptureAgent(CaptureAgent):
 
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-        return random.choice(bestActions)
+
+        bestActions = random.choice(bestActions)
+        return bestActions
 
     def getSuccessor(self, gameState, action):
         """
@@ -112,6 +112,9 @@ class ReflexCaptureAgent(CaptureAgent):
     """
         features = self.getFeatures(gameState, action)
         weights = self.getWeights(gameState, action)
+        print action, ":"
+        print features
+        print weights
         return features * weights
 
     def getFeatures(self, gameState, action):
@@ -155,19 +158,22 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         # opponents, then the feature is the distance to the nearest opponent
         distances = []
         features['ExactOpponentGhostDist'] = 0
+        features['OnTop'] = 0
         for opp in self.opponentIndices:
             observation = gameState.getAgentPosition(opp)
             if observation is not None:
-              if self.team == "Red":
-                if observation[0] > self.Xmidpoint:
-                    distances.append(self.getMazeDistance(observation, pos))
-                    features['ExactOpponentGhostDist'] = min(distances)
-              else:
-                if observation[0] < self.Xmidpoint:
-                    distances.append(self.getMazeDistance(observation, pos))
-                    features['ExactOpponentGhostDist'] = min(distances)
+                if self.team == "Red":
+                    if observation[0] > self.Xmidpoint:
+                        distances.append(self.getMazeDistance(observation, pos))
+                        features['ExactOpponentGhostDist'] = min(distances)
+                else:
+                    if observation[0] < self.Xmidpoint:
+                        distances.append(self.getMazeDistance(observation, pos))
+                        features['ExactOpponentGhostDist'] = min(distances)
+            if pos == observation:
+                features['OnTop'] = 1
 
-        # distToNearestHome feature...the feature is the distance to the nearest safe zone (home)
+                    # distToNearestHome feature...the feature is the distance to the nearest safe zone (home)
         distances = []
         for i in range(1, self.Ydist - 1):
             if not gameState.hasWall(self.Xmidpoint, i):
@@ -206,76 +212,61 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                         self.nearestFoodWeight)
         features['successorScore'] = - len(foodList) - (num * len(capsuleList))  # self.getScore(successor)
 
+        agentDists = successor.getAgentDistances()
+        av1 = (float(agentDists[0]) + agentDists[1]) / 2
+        av2 = (float(agentDists[1]) + agentDists[2]) / 2
+        features['ExpectedAgentDist'] = min(av1, av2)
+
         # print action, features
-        # print successor.getAgentState(1).scaredTimer, successor.getAgentState(3).scaredTimer
 
         return features
 
     def getWeights(self, gameState, action):
-        successor = self.getSuccessor(gameState, action)
-        pos = successor.getAgentPosition(self.index)
         foodList = self.getFood(gameState).asList()
         timerList = []
         for opp in self.opponentIndices:
-          timerList.append(gameState.getAgentState(opp).scaredTimer)
-        something = successor.getAgentState(self.opponentIndices[0])
+            timerList.append(gameState.getAgentState(opp).scaredTimer)
         if len(foodList) <= 2:
             return {'successorScore': 0, 'distToNearestFood': 0, 'distToNearestFood2': 0,
                     'distToNearestCapsule': 0, 'ExactOpponentGhostDist': 10, 'distToNearestHome': -20,
-                    'numFoodCarry': 0}
+                    'numFoodCarry': 0, 'ExpectedAgentDist': 0, 'OnTop': 0}
         else:
-          if self.getPreviousObservation() is not None:
             # if being chased
-            # print self.getPreviousObservation()
-            # print self.getFeatures(self.getPreviousObservation(), "Stop")['ExactOpponentGhostDist']
-            if self.getFeatures(gameState, action)['ExactOpponentGhostDist'] != 0 or self.getFeatures(self.getPreviousObservation(), "Stop")['ExactOpponentGhostDist']==2:
-                if max(timerList) > 2:
-                  prevActions = []
-                  possActions = ["North", "South", "East", "West", "Stop"]
-                  # print self.getFeatures(self.getPreviousObservation(), "Stop")['ExactOpponentGhostDist']
-                  return {'successorScore': 0,
-                          'distToNearestFood': 0,
-                          'distToNearestFood2': 0,
-                          'distToNearestCapsule': 0,
-                          'ExactOpponentGhostDist': -10, 'distToNearestHome': 0, 'numFoodCarry': 0}
-                else:
-                  return {'successorScore': 0,
-                          'distToNearestFood': 0,
-                          'distToNearestFood2': 0,
-                          'distToNearestCapsule': 0,
-                          'ExactOpponentGhostDist': 10, 'distToNearestHome': -20, 'numFoodCarry': 0}
-            else:
-                return {'successorScore': self.successorScoreWeight,
-                        'distToNearestFood': -self.nearestFoodWeight,
-                        'distToNearestFood2': 0,
-                        'distToNearestCapsule': -self.nearestCapsuleWeight,
-                        'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0}
-          else:
-            # if being chased
-            # print self.getPreviousObservation()
-            # print self.getFeatures(self.getPreviousObservation(), "Stop")['ExactOpponentGhostDist']
             if self.getFeatures(gameState, action)['ExactOpponentGhostDist'] != 0:
                 if max(timerList) > 2:
-                  prevActions = []
-                  possActions = ["North", "South", "East", "West", "Stop"]
-                  # print self.getFeatures(self.getPreviousObservation(), "Stop")['ExactOpponentGhostDist']
-                  return {'successorScore': 0,
-                          'distToNearestFood': 0,
-                          'distToNearestFood2': 0,
-                          'distToNearestCapsule': 0,
-                          'ExactOpponentGhostDist': -10, 'distToNearestHome': 0, 'numFoodCarry': 0}
+                    return {'successorScore': 0,
+                            'distToNearestFood': 0,
+                            'distToNearestFood2': 0,
+                            'distToNearestCapsule': 0,
+                            'ExactOpponentGhostDist': -10, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                            'ExpectedAgentDist': 0,
+                            'OnTop': 0}
                 else:
-                  return {'successorScore': 0,
-                          'distToNearestFood': 0,
-                          'distToNearestFood2': 0,
-                          'distToNearestCapsule': 0,
-                          'ExactOpponentGhostDist': 10, 'distToNearestHome': -20, 'numFoodCarry': 0}
+                    return {'successorScore': 0,
+                            'distToNearestFood': 0,
+                            'distToNearestFood2': 0,
+                            'distToNearestCapsule': 0,
+                            'ExactOpponentGhostDist': 10, 'distToNearestHome': -20, 'numFoodCarry': 0,
+                            'ExpectedAgentDist': 0,
+                            'OnTop': 0}
+            # if not being chased
             else:
-                return {'successorScore': self.successorScoreWeight,
-                        'distToNearestFood': -self.nearestFoodWeight,
-                        'distToNearestFood2': 0,
-                        'distToNearestCapsule': -self.nearestCapsuleWeight,
-                        'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0}
+                if max(timerList) > 2 and self.getFeatures(gameState, action)['OnTop'] != 0:
+                    return {'successorScore': 0,
+                            'distToNearestFood': 0,
+                            'distToNearestFood2': 0,
+                            'distToNearestCapsule': 0,
+                            'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                            'ExpectedAgentDist': 0,
+                            'OnTop': 10000}
+                else:
+                    return {'successorScore': self.successorScoreWeight,
+                            'distToNearestFood': -self.nearestFoodWeight,
+                            'distToNearestFood2': 0,
+                            'distToNearestCapsule': -self.nearestCapsuleWeight,
+                            'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                            'ExpectedAgentDist': 5,
+                            'OnTop': 0}
 
     def algo(self, distToNearestFood, successorScoreWeight, NearestFoodWeight):
         x = (distToNearestFood - 1) * successorScoreWeight
