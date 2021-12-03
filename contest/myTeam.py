@@ -76,7 +76,6 @@ class ReflexCaptureAgent(CaptureAgent):
         self.nearestFoodWeight = float(self.successorScoreWeight) / (49 + self.multiplier)
         self.nearestCapsuleWeight = self.nearestFoodWeight * self.multiplier
         self.opponentIndices = self.getOpponents(gameState)
-        self.prevAction = []
 
     def chooseAction(self, gameState):
         """
@@ -112,9 +111,6 @@ class ReflexCaptureAgent(CaptureAgent):
     """
         features = self.getFeatures(gameState, action)
         weights = self.getWeights(gameState, action)
-        print action, ":"
-        print features
-        print weights
         return features * weights
 
     def getFeatures(self, gameState, action):
@@ -173,7 +169,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             if pos == observation:
                 features['OnTop'] = 1
 
-                    # distToNearestHome feature...the feature is the distance to the nearest safe zone (home)
+        # distToNearestHome feature...the feature is the distance to the nearest safe zone (home)
         distances = []
         for i in range(1, self.Ydist - 1):
             if not gameState.hasWall(self.Xmidpoint, i):
@@ -212,68 +208,200 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                         self.nearestFoodWeight)
         features['successorScore'] = - len(foodList) - (num * len(capsuleList))  # self.getScore(successor)
 
+        # ExpectedAgentDist feature... our agent gets some sonar reading as to how close the opponents are.
+        # this feature is the minumum of that sonar reading distance
         agentDists = successor.getAgentDistances()
         av1 = (float(agentDists[0]) + agentDists[1]) / 2
         av2 = (float(agentDists[1]) + agentDists[2]) / 2
         features['ExpectedAgentDist'] = min(av1, av2)
+
+        # if our offensive agent is on our half and we see the opponent on our half, then
+        # play defense
+        agentPacman = gameState.getAgentState(self.index).isPacman
+        oppExactLocations = self.getOpponentExactLocationO(gameState)
+        if not agentPacman:
+            if oppExactLocations:
+                features = util.Counter()
+                successor = self.getSuccessor(gameState, action)
+
+                myState = successor.getAgentState(self.index)
+                myPos = myState.getPosition()
+
+                # Computes whether we're on defense (1) or offense (0)
+                features['onDefense'] = 1
+                if myState.isPacman: features['onDefense'] = 0
+
+                # Computes distance to invaders we can see
+                enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+                invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+                features['numInvaders'] = len(invaders)
+                if len(invaders) > 0:
+                    dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+                    features['invaderDistance'] = min(dists)
+
+                if action == Directions.STOP: features['stop'] = 1
+                rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+                if action == rev: features['reverse'] = 1
+
+                return features
 
         # print action, features
 
         return features
 
     def getWeights(self, gameState, action):
+        agentPacman = gameState.getAgentState(self.index).isPacman
         foodList = self.getFood(gameState).asList()
-        timerList = []
-        for opp in self.opponentIndices:
-            timerList.append(gameState.getAgentState(opp).scaredTimer)
+        opponentAttr = self.getOpponentsAttrToOffense(gameState, action)
+        numGhostsClose = opponentAttr[0]
+        closeGhostsTimerList = opponentAttr[1]
+        farGhostsTimerList = opponentAttr[2]
+        oppExactLocations = self.getOpponentExactLocationO(gameState)
+        # if there are two or less food left
         if len(foodList) <= 2:
+            # get back home as quick as possible while staying away from nearest ghost
             return {'successorScore': 0, 'distToNearestFood': 0, 'distToNearestFood2': 0,
                     'distToNearestCapsule': 0, 'ExactOpponentGhostDist': 10, 'distToNearestHome': -20,
                     'numFoodCarry': 0, 'ExpectedAgentDist': 0, 'OnTop': 0}
+        # if more than two food left
         else:
-            # if being chased
-            if self.getFeatures(gameState, action)['ExactOpponentGhostDist'] != 0:
-                if max(timerList) > 2:
-                    return {'successorScore': 0,
-                            'distToNearestFood': 0,
-                            'distToNearestFood2': 0,
-                            'distToNearestCapsule': 0,
-                            'ExactOpponentGhostDist': -10, 'distToNearestHome': 0, 'numFoodCarry': 0,
-                            'ExpectedAgentDist': 0,
-                            'OnTop': 0}
+            # if our agent is on other side (he is pacman)
+            if agentPacman:
+                # if at least one opponent is close
+                if numGhostsClose > 0:
+                    # if close opponent is scared and more than 2 away
+                    if list(closeGhostsTimerList.values()) and max(list(closeGhostsTimerList.values())) > 2:
+                        # run away
+                        return {'successorScore': 0,
+                                'distToNearestFood': 0,
+                                'distToNearestFood2': 0,
+                                'distToNearestCapsule': 0,
+                                'ExactOpponentGhostDist': -20, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                                'ExpectedAgentDist': 0,
+                                'OnTop': 0}
+                    # if close opponent is not scared
+                    else:
+                        # stay away from close opponent and try to get home
+                        return {'successorScore': 0,
+                                'distToNearestFood': 0,
+                                'distToNearestFood2': 0,
+                                'distToNearestCapsule': 0,
+                                'ExactOpponentGhostDist': 100, 'distToNearestHome': -2000, 'numFoodCarry': 0,
+                                'ExpectedAgentDist': 0,
+                                'OnTop': 0}
+                # if no close opponents
                 else:
-                    return {'successorScore': 0,
-                            'distToNearestFood': 0,
-                            'distToNearestFood2': 0,
-                            'distToNearestCapsule': 0,
-                            'ExactOpponentGhostDist': 10, 'distToNearestHome': -20, 'numFoodCarry': 0,
-                            'ExpectedAgentDist': 0,
-                            'OnTop': 0}
-            # if not being chased
+                    # if at least one opponent is scared and next action is to kill opponent.
+                    # this takes care of the weird case where ExactOpponentGhostDist changes from
+                    # a positive value to zero because of eating the scared ghost
+                    if list(closeGhostsTimerList.values()) and max(list(closeGhostsTimerList.values())) > 2 and self.getFeatures(gameState, action)['OnTop'] != 0:
+                        # then kill opponent
+                        return {'successorScore': 0,
+                                'distToNearestFood': 0,
+                                'distToNearestFood2': 0,
+                                'distToNearestCapsule': 0,
+                                'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                                'ExpectedAgentDist': 0,
+                                'OnTop': 10000}
+                    # if at least one opponent is scared
+                    elif list(closeGhostsTimerList.values()) and max(list(closeGhostsTimerList.values())) > 2:
+                        # don't go after capsules - NOTE: these values don't work as they should right now
+                        return {'successorScore': self.successorScoreWeight,
+                                'distToNearestFood': -self.nearestFoodWeight,
+                                'distToNearestFood2': 0,
+                                'distToNearestCapsule': 0,
+                                'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                                'ExpectedAgentDist': 0,
+                                'OnTop': 0}
+                    # if no opponents are scared
+                    else:
+                        # then act optimally
+                        return {'successorScore': self.successorScoreWeight,
+                                'distToNearestFood': -self.nearestFoodWeight,
+                                'distToNearestFood2': 0,
+                                'distToNearestCapsule': -self.nearestCapsuleWeight,
+                                'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                                'ExpectedAgentDist': 10,
+                                'OnTop': 0}
+            # if our agent is on its own side (he is ghost)
             else:
-                if max(timerList) > 2 and self.getFeatures(gameState, action)['OnTop'] != 0:
-                    return {'successorScore': 0,
-                            'distToNearestFood': 0,
-                            'distToNearestFood2': 0,
-                            'distToNearestCapsule': 0,
-                            'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
-                            'ExpectedAgentDist': 0,
-                            'OnTop': 10000}
+                # if we know position of opponent offensive pacman
+                if oppExactLocations:
+                    agent = DefensiveReflexAgent(gameState)
+                    return agent.getWeights(gameState, action)
+                # if we don't know the position of opponent offensive guy
                 else:
+                    # then act optimally
                     return {'successorScore': self.successorScoreWeight,
                             'distToNearestFood': -self.nearestFoodWeight,
                             'distToNearestFood2': 0,
                             'distToNearestCapsule': -self.nearestCapsuleWeight,
                             'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
-                            'ExpectedAgentDist': 5,
+                            'ExpectedAgentDist': 10,
                             'OnTop': 0}
 
+    # algorithm that returns a value to be used above that
+    # prevents our agent from not consuming food/capsules during the weird case
     def algo(self, distToNearestFood, successorScoreWeight, NearestFoodWeight):
         x = (distToNearestFood - 1) * successorScoreWeight
         y = (distToNearestFood - 1) * (distToNearestFood - 1)
         z = NearestFoodWeight
         c = (x - (y * z) + z) / float(successorScoreWeight)
         return c
+
+    # returns number of close opponents to offensive agent,
+    # scaredTimer of close opponents to offensive agent
+    # scaredTimer of far opponents to offensive agent
+    def getOpponentsAttrToOffense(self, gameState, action):
+        closeTimerList = util.Counter()
+        notCloseTimerList = util.Counter()
+        see_me = 0
+        # offensive agent position
+        offensiveAgentPos = gameState.getAgentState(self.index).getPosition()
+        for opp in self.opponentIndices:
+            oppAgentPos = gameState.getAgentState(opp).getPosition()
+            # if we know the opponent agent position
+            if oppAgentPos is not None:
+                dis = self.getMazeDistance(offensiveAgentPos, oppAgentPos)
+                # if the opponent agent position is greater than 5 units from our offensive guy
+                # then the opponent is not close so we won't worry about it
+                if dis > 5:
+                    notCloseTimerList[opp] = gameState.getAgentState(opp).scaredTimer
+                # if the opponent agent position is less than 5 units from our offensive guy
+                # then the opponent is close so we add it to this list to use later
+                else:
+                    # keeps track of how many close ghosts there are
+                    see_me += 1
+                    closeTimerList[opp] = gameState.getAgentState(opp).scaredTimer
+            else:
+                notCloseTimerList[opp] = gameState.getAgentState(opp).scaredTimer
+
+        return see_me, closeTimerList, notCloseTimerList
+
+    # returns a dictionary (OppAgentIndex, Position) if the position is known
+    def getOpponentExactLocation(self, gameState):
+        oppAgentPos = util.Counter()
+        for opp in self.opponentIndices:
+            knownPos = gameState.getAgentState(opp).getPosition()
+            if knownPos is not None:
+                oppAgentPos[opp] = knownPos
+        return oppAgentPos
+
+    # returns a dictionary (OppAgentIndex, Position) of only opposing agents that are on our half (they are pacmans)
+    # if their position is known
+    def getOpponentExactLocationO(self, gameState):
+        oppExactLocations = self.getOpponentExactLocation(gameState)
+        oppAgentPos = []
+        if list(oppExactLocations.values()):
+            for x in list(oppExactLocations.values()):
+                if self.team == "Red":
+                    if x[0] < self.Xmidpoint:
+                        oppAgentPos.append(x)
+                else:
+                    if x[0] > self.Xmidpoint:
+                        oppAgentPos.append(x)
+        return oppAgentPos
+
 
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
