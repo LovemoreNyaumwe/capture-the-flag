@@ -80,8 +80,8 @@ class ReflexCaptureAgent(CaptureAgent):
         self.nearestCapsuleWeight = self.nearestFoodWeight * self.multiplier
         self.opponentIndices = self.getOpponents(gameState)
         self.totalTime = gameState.data.timeleft
-        print "------main------"
-        print self.opponentIndices
+        # print "------main------"
+        # print self.opponentIndices
 
     def chooseAction(self, gameState):
         """
@@ -444,14 +444,14 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         myState = successor.getAgentState(self.index)
         myPos = myState.getPosition()
 
-        particleFilter = ParticleFilter()
-        particleFilter.registerInitialState(gameState, self)
-
-        particleFilter.observe(self.opponentIndices[0], self.index, gameState)
-        particleFilter.observe(self.opponentIndices[1], self.index, gameState)
-
-        particleFilter.elapseTime(self.opponentIndices[0], gameState)
-        particleFilter.elapseTime(self.opponentIndices[0], gameState)
+        # particleFilter = ParticleFilter()
+        # particleFilter.registerInitialState(gameState, self)
+        #
+        # particleFilter.observe(self.opponentIndices[0], self.index, gameState)
+        # particleFilter.observe(self.opponentIndices[1], self.index, gameState)
+        #
+        # particleFilter.elapseTime(self.opponentIndices[0], gameState)
+        # particleFilter.elapseTime(self.opponentIndices[0], gameState)
 
         # print self.opponentIndices[0]
         # print self.opponentIndices[1]
@@ -462,7 +462,7 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         # print "first"
         # print particleFilter.getBestPositionEstimate(self.opponentIndices[1]), gameState.getAgentState(opponents[0]).getPosition()
         # print "second"
-        self.displayDistributionsOverPositions([particleFilter.getBeliefDistribution(self.opponentIndices[0]), particleFilter.getBeliefDistribution(self.opponentIndices[1])])
+        # self.displayDistributionsOverPositions([particleFilter.getBeliefDistribution(self.opponentIndices[0]), particleFilter.getBeliefDistribution(self.opponentIndices[1])])
 
         # The number of food we have to defend in the current state and the previous state.
         currNumDefFood = len(self.getFoodYouAreDefending(gameState).asList())
@@ -502,6 +502,22 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         av1 = (float(agentDists[0]) + agentDists[1]) / 2
         av2 = (float(agentDists[1]) + agentDists[2]) / 2
         features['ExpectedAgentDist'] = min(av1, av2)
+        # pos1 = particleFilter.getBestPositionEstimate(self.opponentIndices[0])
+        # pos2 = particleFilter.getBestPositionEstimate(self.opponentIndices[1])
+        # if self.team == "Red":
+        #     if pos1[0] < self.Xmidpoint:
+        #         # print pos1, pos2, "HI, INVADER"
+        #         print self.team
+        # else:
+        #     # print "OUTER", pos1[0], pos2[0], self.Xmidpoint
+        #     if pos2[0] > self.Xmidpoint or pos1[0] > self.Xmidpoint:
+        #         # print self.team
+        #         # print "INNER", pos1[0], pos2[0], self.Xmidpoint
+        #         print pos1, pos2, "HI, INVADER"
+        # minEst = min(self.getMazeDistance(myPos, pos1),
+        #              self.getMazeDistance(myPos, pos2))
+        # print minEst
+        # features['ExpectedAgentDist'] = minEst
 
         # Computes whether we're on defense (1) or offense (0)
         features['onDefense'] = 1
@@ -546,11 +562,29 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
 
+
         return features
 
     def getWeights(self, gameState, action):
-        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -15, 'stop': -100, 'reverse': -2,
+        # scaredTimers = []
+        # for x in self.getTeam(gameState):
+        #     # print self.team
+        #     if self.team == "Red":
+        #         if gameState.getAgentPosition(x)[0] < self.Xmidpoint:
+        #             scaredTimers.append(gameState.getAgentState(x).scaredTimer)
+        #     else:
+        #         if gameState.getAgentPosition(x)[0] > self.Xmidpoint:
+        #             scaredTimers.append(gameState.getAgentState(x).scaredTimer)
+        scaredTimers =[]
+        for x in self.getTeam(gameState):
+            scaredTimers.append(gameState.getAgentState(x).scaredTimer)
+        # print scaredTimers
+        if max(scaredTimers) > 0:
+            return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': 15, 'stop': -100, 'reverse': -2,
                 'ExpectedAgentDist': -5, 'numFoodLeft': 0, 'eatenFoodPos': -10, 'avgDistFood': -5}
+        else:
+            return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -15, 'stop': -100, 'reverse': -2,
+                    'ExpectedAgentDist': -5, 'numFoodLeft': 0, 'eatenFoodPos': -10, 'avgDistFood': -5}
 
 
 class ParticleFilter:
@@ -584,8 +618,8 @@ class ParticleFilter:
         self.legalPositions = gameState.getWalls().asList(False)
         # print self.legalPositions
         self.opponentIndices = agent.getOpponents(gameState)
-        print "------ris------"
-        print self.opponentIndices
+        # print "------ris------"
+        # print self.opponentIndices
         self.initializeUniformly()
 
     def setNumParticles(self, numParticles):
