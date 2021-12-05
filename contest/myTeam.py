@@ -467,28 +467,6 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
             prevDefFood = self.getFoodYouAreDefending(prev).asList()
             eatenFood = list(set(prevDefFood) - set(currDefFood))[0]
             self.timeFlag = self.time
-            # print prevDefFood, "AAAAAAA" ,currDefFood
-        # print eatenFood
-        # print distancestoAllFoods
-        # if something was eaten
-        if eatenFood is not None:
-            #find the food closest to the food that was eaten
-            dist = {}
-            for x in currDefFood:
-                dist[x] = self.getMazeDistance(eatenFood, x)
-            closestFoodtoEatenFood = min(dist, key=dist.get)
-            self.savedFood = closestFoodtoEatenFood
-            features['eatenFoodPos'] = self.getMazeDistance(myPos, closestFoodtoEatenFood)
-        else:
-            features['eatenFoodPos'] = 0
-        if self.timeFlag != 0:
-            # print self.time - self.timeFlag
-            if self.time - self.timeFlag < 20:
-                # print self.savedFood
-                # add a thing where if we can see set to 0 instead
-                features['eatenFoodPos'] = self.getMazeDistance(myPos, self.savedFood)
-        # print "Eaten Food", eatenFood, "Closest Food to Eaten Food", closestFoodtoEatenFood
-        # print numDefFood
         # the distances to all foods at a certain time. We find the average of this to hopefully find where food is densest
         distancestoAllFoods = []
         for x in currDefFood:
@@ -515,7 +493,32 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
             features['invaderDistance'] = min(dists)
             # print min(dists)
-
+            # print min(dists)
+            # print prevDefFood, "AAAAAAA" ,currDefFood
+        # print eatenFood
+        # print distancestoAllFoods
+        # if something was eaten
+        if eatenFood is not None:
+            #find the food closest to the food that was eaten
+            dist = {}
+            for x in currDefFood:
+                dist[x] = self.getMazeDistance(eatenFood, x)
+            closestFoodtoEatenFood = min(dist, key=dist.get)
+            self.savedFood = closestFoodtoEatenFood
+            features['eatenFoodPos'] = self.getMazeDistance(myPos, closestFoodtoEatenFood)
+        else:
+            features['eatenFoodPos'] = 0
+        if self.timeFlag != 0:
+            # print self.time - self.timeFlag
+            if self.time - self.timeFlag < 20:
+                # print self.savedFood
+                # add a thing where if we can see set to 0 instead
+                if features['invaderDistance'] == 0:
+                    features['eatenFoodPos'] = self.getMazeDistance(myPos, self.savedFood)
+                else:
+                    features['eatenFoodPos'] = 0
+        # print "Eaten Food", eatenFood, "Closest Food to Eaten Food", closestFoodtoEatenFood
+        # print numDefFood
         # These make sure pacman doesn't get stuck anywhere.
         if action == Directions.STOP: features['stop'] = 1
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
