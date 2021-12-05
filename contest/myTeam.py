@@ -62,6 +62,8 @@ class ReflexCaptureAgent(CaptureAgent):
 
     def registerInitialState(self, gameState):
         self.time = 0
+        self.timeFlag = 0
+        self.savedFood = None
         self.start = gameState.getAgentPosition(self.index)
         CaptureAgent.registerInitialState(self, gameState)
         self.team = "Red"
@@ -450,10 +452,10 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
             self.time = self.time + 1
         if self.time > 2:
             prevNumDefFood = len(self.getFoodYouAreDefending(prev).asList())
+            self.time = self.time + 1
         # print "this state food", currNumDefFood, "prev state food", prevNumDefFood
         # new feature that isn't used
         features['numFoodLeft'] = currNumDefFood
-
         #Finds the food that was last eaten as well as the food closest to the food that was just eaten
         eatenFood = None
         closestFoodtoEatenFood = None
@@ -464,6 +466,7 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
             # find what was eaten
             prevDefFood = self.getFoodYouAreDefending(prev).asList()
             eatenFood = list(set(prevDefFood) - set(currDefFood))[0]
+            self.timeFlag = self.time
             # print prevDefFood, "AAAAAAA" ,currDefFood
         # print eatenFood
         # print distancestoAllFoods
@@ -474,18 +477,24 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
             for x in currDefFood:
                 dist[x] = self.getMazeDistance(eatenFood, x)
             closestFoodtoEatenFood = min(dist, key=dist.get)
-
-            features['eatenFoodPos'] = self.getMazeDistance(myPos, eatenFood)
+            self.savedFood = closestFoodtoEatenFood
+            features['eatenFoodPos'] = self.getMazeDistance(myPos, closestFoodtoEatenFood)
         else:
             features['eatenFoodPos'] = 0
+        if self.timeFlag != 0:
+            # print self.time - self.timeFlag
+            if self.time - self.timeFlag < 20:
+                # print self.savedFood
+                # add a thing where if we can see set to 0 instead
+                features['eatenFoodPos'] = self.getMazeDistance(myPos, self.savedFood)
         # print "Eaten Food", eatenFood, "Closest Food to Eaten Food", closestFoodtoEatenFood
         # print numDefFood
-
         # the distances to all foods at a certain time. We find the average of this to hopefully find where food is densest
         distancestoAllFoods = []
         for x in currDefFood:
             distancestoAllFoods.append(self.getMazeDistance(myPos, x))
         averageDist = sum(distancestoAllFoods)/len(distancestoAllFoods)
+        features['avgDistFood'] = averageDist
         # print averageDist
 
         # added a noisy distance feature as well. copy pasted from offensive.
@@ -515,5 +524,5 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         return features
 
     def getWeights(self, gameState, action):
-        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2,
-                'ExpectedAgentDist': -5, 'numFoodLeft': 0, 'eatenFoodPos': -10}
+        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -15, 'stop': -100, 'reverse': -2,
+                'ExpectedAgentDist': -5, 'numFoodLeft': 0, 'eatenFoodPos': -10, 'avgDistFood': -5}
