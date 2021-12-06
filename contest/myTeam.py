@@ -216,21 +216,98 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         # ExpectedAgentDist feature... our agent gets some sonar reading as to how close the opponents are.
         # this feature is the minumum of that sonar reading distance
         agentDists = successor.getAgentDistances()
+        # print self.getMazeDistance(successor.getAgentPosition(self.index), successor.getAgentPosition(2)), self.getMazeDistance(successor.getAgentPosition(self.index), successor.getAgentPosition(4))
         av1 = (float(agentDists[0]) + agentDists[1]) / 2
-        av2 = (float(agentDists[1]) + agentDists[2]) / 2
+        av2 = (float(agentDists[2]) + agentDists[3]) / 2
         features['ExpectedAgentDist'] = min(av1, av2)
 
         # if our offensive agent is on our half and we see the opponent on our half, then
         # play defense. or our team is winning by a certain amount
         agentPacman = gameState.getAgentState(self.index).isPacman
         oppExactLocations = self.getOpponentExactLocationO(gameState)
-        if not agentPacman or self.getScore(gameState) > 3 / 5 * self.InitialCapsuleList:
+        if not agentPacman:
             if oppExactLocations:
                 features = util.Counter()
                 successor = self.getSuccessor(gameState, action)
-
                 myState = successor.getAgentState(self.index)
                 myPos = myState.getPosition()
+
+                # particleFilter = ParticleFilter()
+                # particleFilter.registerInitialState(gameState, self)
+                #
+                # particleFilter.observe(self.opponentIndices[0], self.index, gameState)
+                # particleFilter.observe(self.opponentIndices[1], self.index, gameState)
+                #
+                # particleFilter.elapseTime(self.opponentIndices[0], gameState)
+                # particleFilter.elapseTime(self.opponentIndices[0], gameState)
+
+                # print self.opponentIndices[0]
+                # print self.opponentIndices[1]
+                # opponents = self.getOpponents(gameState)
+                # print opponents
+
+                # print particleFilter.getBestPositionEstimate(self.opponentIndices[0]), gameState.getAgentState(opponents[0]).getPosition()
+                # print "first"
+                # print particleFilter.getBestPositionEstimate(self.opponentIndices[1]), gameState.getAgentState(opponents[0]).getPosition()
+                # print "second"
+                # self.displayDistributionsOverPositions([particleFilter.getBeliefDistribution(self.opponentIndices[0]), particleFilter.getBeliefDistribution(self.opponentIndices[1])])
+
+                # The number of food we have to defend in the current state and the previous state.
+                currNumDefFood = len(self.getFoodYouAreDefending(gameState).asList())
+                # print "successor state food", nextNumDefFood, "this state food", thisNumDefFood
+                # Accounting for the first few previous states being none
+                prevNumDefFood = None
+                prev = self.getPreviousObservation()
+                if self.time <= 2:
+                    self.time = self.time + 1
+                if self.time > 2 and prev is not None:
+                    prevNumDefFood = len(self.getFoodYouAreDefending(prev).asList())
+                    self.time = self.time + 1
+                else:
+                    self.time = self.time + 1
+                # print "this state food", currNumDefFood, "prev state food", prevNumDefFood
+                # new feature that isn't used
+                features['numFoodLeft'] = currNumDefFood
+                # Finds the food that was last eaten as well as the food closest to the food that was just eaten
+                eatenFood = None
+                closestFoodtoEatenFood = None
+                # all the food that we have to defend
+                currDefFood = self.getFoodYouAreDefending(gameState).asList()
+                # if something was eaten
+                if prevNumDefFood > currNumDefFood:
+                    # find what was eaten
+                    prevDefFood = self.getFoodYouAreDefending(prev).asList()
+                    eatenFood = list(set(prevDefFood) - set(currDefFood))[0]
+                    self.timeFlag = self.time
+                # the distances to all foods at a certain time. We find the average of this to hopefully find where food is densest
+                distancestoAllFoods = []
+                for x in currDefFood:
+                    distancestoAllFoods.append(self.getMazeDistance(myPos, x))
+                averageDist = sum(distancestoAllFoods) / len(distancestoAllFoods)
+                features['avgDistFood'] = averageDist
+                # print averageDist
+
+                # added a noisy distance feature as well. copy pasted from offensive.
+                agentDists = successor.getAgentDistances()
+                av1 = (float(agentDists[0]) + agentDists[1]) / 2
+                av2 = (float(agentDists[2]) + agentDists[3]) / 2
+                features['ExpectedAgentDist'] = min(av1, av2)
+                # pos1 = particleFilter.getBestPositionEstimate(self.opponentIndices[0])
+                # pos2 = particleFilter.getBestPositionEstimate(self.opponentIndices[1])
+                # if self.team == "Red":
+                #     if pos1[0] < self.Xmidpoint:
+                #         # print pos1, pos2, "HI, INVADER"
+                #         print self.team
+                # else:
+                #     # print "OUTER", pos1[0], pos2[0], self.Xmidpoint
+                #     if pos2[0] > self.Xmidpoint or pos1[0] > self.Xmidpoint:
+                #         # print self.team
+                #         # print "INNER", pos1[0], pos2[0], self.Xmidpoint
+                #         print pos1, pos2, "HI, INVADER"
+                # minEst = min(self.getMazeDistance(myPos, pos1),
+                #              self.getMazeDistance(myPos, pos2))
+                # print minEst
+                # features['ExpectedAgentDist'] = minEst
 
                 # Computes whether we're on defense (1) or offense (0)
                 features['onDefense'] = 1
@@ -243,12 +320,37 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                 if len(invaders) > 0:
                     dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
                     features['invaderDistance'] = min(dists)
-
+                    # print min(dists)
+                    # print min(dists)
+                    # print prevDefFood, "AAAAAAA" ,currDefFood
+                # print eatenFood
+                # print distancestoAllFoods
+                # if something was eaten
+                if eatenFood is not None:
+                    # find the food closest to the food that was eaten
+                    dist = {}
+                    for x in currDefFood:
+                        dist[x] = self.getMazeDistance(eatenFood, x)
+                    closestFoodtoEatenFood = min(dist, key=dist.get)
+                    self.savedFood = closestFoodtoEatenFood
+                    features['eatenFoodPos'] = self.getMazeDistance(myPos, closestFoodtoEatenFood)
+                else:
+                    features['eatenFoodPos'] = 0
+                if self.timeFlag != 0:
+                    # print self.time - self.timeFlag
+                    if self.time - self.timeFlag < 20:
+                        # print self.savedFood
+                        # add a thing where if we can see set to 0 instead
+                        if features['invaderDistance'] == 0:
+                            features['eatenFoodPos'] = self.getMazeDistance(myPos, self.savedFood)
+                        else:
+                            features['eatenFoodPos'] = 0
+                # print "Eaten Food", eatenFood, "Closest Food to Eaten Food", closestFoodtoEatenFood
+                # print numDefFood
+                # These make sure pacman doesn't get stuck anywhere.
                 if action == Directions.STOP: features['stop'] = 1
                 rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
                 if action == rev: features['reverse'] = 1
-
-                return features
 
         # print action, features
 
@@ -285,8 +387,8 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             if agentPacman:
                 # if at least one opponent is close
                 if numGhostsClose > 0:
-                    # if close opponent is scared and has more than 7 seconds left on timer
-                    if list(closeGhostsTimerList.values()) and max(list(closeGhostsTimerList.values())) > 7:
+                    # if close opponent is scared and has more than 10 seconds left on timer
+                    if list(closeGhostsTimerList.values()) and max(list(closeGhostsTimerList.values())) > 10:
                         # run away
                         return {'successorScore': 0,
                                 'distToNearestFood': 0,
@@ -299,7 +401,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                     else:
                         # stay away from close opponent and try to get home
                         return {'successorScore': 0,
-                                'distToNearestFood': 0,
+                                'distToNearestFood': 10,
                                 'distToNearestFood2': 0,
                                 'distToNearestCapsule': 0,
                                 'ExactOpponentGhostDist': 100, 'distToNearestHome': -2000, 'numFoodCarry': 0,
@@ -324,7 +426,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                     elif list(closeGhostsTimerList.values()) and max(list(closeGhostsTimerList.values())) > 2:
                         # don't go after capsules - NOTE: these values don't work as they should right now
                         return {'successorScore': self.successorScoreWeight,
-                                'distToNearestFood': -self.nearestFoodWeight,
+                                'distToNearestFood': -100*self.nearestFoodWeight,
                                 'distToNearestFood2': 0,
                                 'distToNearestCapsule': 10,
                                 'ExactOpponentGhostDist': 0, 'distToNearestHome': 0, 'numFoodCarry': 0,
@@ -354,8 +456,8 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                                 'distToNearestFood': -self.nearestFoodWeight,
                                 'distToNearestFood2': 0,
                                 'distToNearestCapsule': -self.nearestCapsuleWeight,
-                                'ExactOpponentGhostDist': 25, 'distToNearestHome': 0, 'numFoodCarry': 0,
-                                'ExpectedAgentDist': 5,
+                                'ExactOpponentGhostDist': 100, 'distToNearestHome': 0, 'numFoodCarry': 0,
+                                'ExpectedAgentDist': 0,
                                 'OnTop': 0}
                     else:
                         # then act optimally
@@ -472,9 +574,11 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         prev = self.getPreviousObservation()
         if self.time <= 2:
             self.time = self.time + 1
-        if self.time > 2:
+        if self.time > 2 and prev is not None:
             prevNumDefFood = len(self.getFoodYouAreDefending(prev).asList())
             self.time = self.time + 1
+        else:
+            self.time = self.time +1
         # print "this state food", currNumDefFood, "prev state food", prevNumDefFood
         # new feature that isn't used
         features['numFoodLeft'] = currNumDefFood
@@ -492,15 +596,15 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         # the distances to all foods at a certain time. We find the average of this to hopefully find where food is densest
         distancestoAllFoods = []
         for x in currDefFood:
-            distancestoAllFoods.append(self.getMazeDistance(myPos, x))
-        averageDist = sum(distancestoAllFoods) / len(distancestoAllFoods)
+                distancestoAllFoods.append(self.getMazeDistance(myPos, x))
+                averageDist = sum(distancestoAllFoods) / len(distancestoAllFoods)
         features['avgDistFood'] = averageDist
         # print averageDist
 
         # added a noisy distance feature as well. copy pasted from offensive.
         agentDists = successor.getAgentDistances()
         av1 = (float(agentDists[0]) + agentDists[1]) / 2
-        av2 = (float(agentDists[1]) + agentDists[2]) / 2
+        av2 = (float(agentDists[2]) + agentDists[3]) / 2
         features['ExpectedAgentDist'] = min(av1, av2)
         # pos1 = particleFilter.getBestPositionEstimate(self.opponentIndices[0])
         # pos2 = particleFilter.getBestPositionEstimate(self.opponentIndices[1])
@@ -586,256 +690,256 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
             return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -15, 'stop': -100, 'reverse': -2,
                     'ExpectedAgentDist': -5, 'numFoodLeft': 0, 'eatenFoodPos': -10, 'avgDistFood': -5}
 
-
-class ParticleFilter:
-    """
-    A particle filter for approximately tracking a single ghost.
-    Useful helper functions will include random.choice, which chooses an element
-    from a list uniformly at random, and util.sample, which samples a key from a
-    Counter by treating its values as probabilities.
-    """
-
-    def __init__(self, numParticles=300):
-        "Sets the ghost agent for later access"
-        # ReflexCaptureAgent.registerInitialState(self, gameState)
-        # self.index = index
-        # self.players = self.getTeam(gameState)
-        # self.obs = []  # most recent observation position
-        self.setNumParticles(numParticles)
-        # self.beliefDistribution = {}
-        # self.opponents =
-        # self.team = gameState.getTeam()
-        # self.obs = []  # most recent observation position
-        # self.setNumParticles(numParticles)
-
-    # def initializeBelief(self, enemy):
-    #     allPossible = util.Counter()
-    #     for pos in self.particles:
-    #         allPossible[pos] += 1
-    #     allPossible.normalize()
-    #     self.beliefDistribution[enemy] = allPossible
-    def registerInitialState(self, gameState, agent):
-        self.legalPositions = gameState.getWalls().asList(False)
-        # print self.legalPositions
-        self.opponentIndices = agent.getOpponents(gameState)
-        # print "------ris------"
-        # print self.opponentIndices
-        self.initializeUniformly()
-
-    def setNumParticles(self, numParticles):
-        self.numParticles = numParticles
-
-    def getPositionDistribution(self, enemy):
-        """
-        Returns a distribution over successor positions of the ghost from the
-        given gameState.
-        You must first place the ghost in the gameState, using setGhostPosition
-        below.
-        """
-        # print enemy
-        x, y = enemy  # The position you set
-        # print ghostPosition
-        # actionDist = self.ghostAgent.getDistribution(gameState)
-        # the ghost cannot fly so the possible ghost positions are up, down, left and right
-        up = (x, y + 1)
-        down = (x, y - 1)
-        left = (x - 1, y)
-        right = (x + 1, y)
-        positions = [up, down, left, right]
-        # print positions
-        # print self.legalPositions
-        possiblePositions = list(set(positions) & set(self.legalPositions))
-        # print possiblePositions
-
-        # the actions have equal probability since the agent can take either of them
-        actionDist = util.Counter()
-        for pos in possiblePositions:
-            actionDist[pos] += 1
-        actionDist.normalize()
-        return actionDist
-
-        # dist = util.Counter()
-        # for action, prob in actionDist.items():
-        #     successorPosition = game.Actions.getSuccessor(ghostPosition, action)
-        #     dist[successorPosition] = prob
-        # return dist
-
-    # def setGhostPosition(self, gameState, ghostPosition):
-    #     """
-    #     Sets the position of the ghost for this inference module to the
-    #     specified position in the supplied gameState.
-    #     Note that calling setGhostPosition does not change the position of the
-    #     ghost in the GameState object used for tracking the true progression of
-    #     the game.  The code in inference.py only ever receives a deep copy of
-    #     the GameState object which is responsible for maintaining game state,
-    #     not a reference to the original object.  Note also that the ghost
-    #     distance observations are stored at the time the GameState object is
-    #     created, so changing the position of the ghost will not affect the
-    #     functioning of observeState.
-    #     """
-    #     conf = game.Configuration(ghostPosition, game.Directions.STOP)
-    #     gameState.data.agentStates[self.index] = game.AgentState(conf, False)
-    #     return gameState
-
-    def initializeUniformly(self, enemy=None):
-        """
-        Initializes a list of particles. Use self.numParticles for the number of
-        particles. Use self.legalPositions for the legal board positions where a
-        particle could be located.  Particles should be evenly (not randomly)
-        distributed across positions in order to ensure a uniform prior.
-        Note: the variable you store your particles in must be a list; a list is
-        simply a collection of unweighted variables (positions in this case).
-        Storing your particles as a Counter (where there could be an associated
-        weight with each position) is incorrect and may produce errors.
-        """
-        "*** YOUR CODE HERE ***"
-        # print self.numParticles
-        # print self.legalPositions
-        # making an empty list that will hold all my particles
-        # self.setNumParticles(10000)
-        # print self.numParticles
-        self.particles = []
-        # making a counter that will show how many particles I still have to allocate
-        particlesLeft = self.numParticles
-        # while there are still particles, we'll distribute them over the different positions
-        # print self.legalPositions
-        while particlesLeft != 0:
-            # splitting up by position
-            for x in self.legalPositions:
-                # checking again if there are still particles left, as we may have run out before hitting the while again
-                if particlesLeft != 0:
-                    # add that position to the particles list
-                    self.particles.append(x)
-                    # we've allocated a particle, so subtract it from how many left.
-                    particlesLeft -= 1
-        # partition the particles into enemy one particles and enemy two particles or both at the beginning
-        self.particlesEnemy0 = []
-        self.particlesEnemy1 = []
-        if enemy == self.opponentIndices[0]:
-            self.particlesEnemy0 = self.particles
-        if enemy == self.opponentIndices[1]:
-            self.particlesEnemy1 = self.particles
-        if enemy is None:
-            self.particlesEnemy0 = self.particles
-            self.particlesEnemy1 = self.particles
-
-        # if enemy == self.opponentIndices[0]
-
-        # print self.particles
-        # print len(self.particles)
-
-    def observe(self, enemy, pacman, gameState):
-        """
-        Update beliefs based on the given distance observation. Make sure to
-        handle the special case where all particles have weight 0 after
-        reweighting based on observation. If this happens, resample particles
-        uniformly at random from the set of legal positions
-        (self.legalPositions).
-        A correct implementation will handle two special cases:
-          1) When a ghost is captured by Pacman, all particles should be updated
-             so that the ghost appears in its prison cell,
-             self.getJailPosition()
-             As before, you can check if a ghost has been captured by Pacman by
-             checking if it has a noisyDistance of None.
-          2) When all particles receive 0 weight, they should be recreated from
-             the prior distribution by calling initializeUniformly. The total
-             weight for a belief distribution can be found by calling totalCount
-             on a Counter object
-        util.sample(Counter object) is a helper method to generate a sample from
-        a belief distribution.
-        You may also want to use util.manhattanDistance to calculate the
-        distance between a particle and Pacman's position.
-        """
-        # print enemy
-        # exit(1)
-        noisyDistances = gameState.getAgentDistances()
-        noisyDistance = noisyDistances[enemy]
-        pacmanPosition = gameState.getAgentPosition(pacman)
-        emissionModel = self.getBeliefDistribution(enemy)
-        # print emissionModel
-        "*** YOUR CODE HERE ***"
-        allPossible = util.Counter()
-        if noisyDistance is not None:
-            for x in self.particles:
-                trueDistance = util.manhattanDistance(x, pacmanPosition)
-                prob = gameState.getDistanceProb(trueDistance, noisyDistance)
-                allPossible[x] = emissionModel[x] * prob
-
-            # check if all 0
-            if allPossible.totalCount() == 0:
-                self.initializeUniformly(gameState)
-            else:
-                # resample
-                newParticles = []
-                for i in range(self.numParticles):
-                    newParticles.append(util.sample(allPossible))
-                # update the new particles based on the likelihood of the different positions
-                if enemy == self.opponentIndices[0]:
-                    self.particlesEnemy0 = newParticles
-                if enemy == self.opponentIndices[1]:
-                    self.particlesEnemy1 = newParticles
-
-    def elapseTime(self, enemy, gameState):
-        """
-        Update beliefs for a time step elapsing.
-        As in the elapseTime method of ExactInference, you should use:
-          newPosDist = self.getPositionDistribution(self.setGhostPosition(gameState, oldPos))
-        to obtain the distribution over new positions for the ghost, given its
-        previous position (oldPos) as well as Pacman's current position.
-        util.sample(Counter object) is a helper method to generate a sample from
-        a belief distribution.
-        """
-        "*** YOUR CODE HERE ***"
-        # print enemy
-        # print self.opponentIndices[0], self.opponentIndices[1]
-        if enemy == self.opponentIndices[0]:
-            # i basically changed what was done earlier to account for particles in a list instead of a counter.
-            # create a new list
-            particles = []
-            # loop over the list of particles (basically valid positions)
-            # print self.particles
-            for oldPos in self.particlesEnemy0:
-                # same as before
-                newPosDist = self.getPositionDistribution(oldPos)
-                # we generate the sample from the pos dist found and append the result to the new list
-                particles.append(util.sample(newPosDist))
-            # we set the particle list to the new sampled one, updating it!
-            # update the new particles based on the likelihood of the different positions
-            self.particlesEnemy0 = particles
-        if enemy == self.opponentIndices[1]:
-            # i basically changed what was done earlier to account for particles in a list instead of a counter.
-            # create a new list
-            particles = []
-            # loop over the list of particles (basically valid positions)
-            # print self.particles
-            for oldPos in self.particlesEnemy1:
-                # same as before
-                newPosDist = self.getPositionDistribution(oldPos)
-                # we generate the sample from the pos dist found and append the result to the new list
-                particles.append(util.sample(newPosDist))
-            # we set the particle list to the new sampled one, updating it!
-            # update the new particles based on the likelihood of the different positions
-            self.particlesEnemy1 = particles
-
-    def getBeliefDistribution(self, enemy):
-        """
-        Return the agent's current belief state, a distribution over ghost
-        locations conditioned on all evidence and time passage. This method
-        essentially converts a list of particles into a belief distribution (a
-        Counter object)
-        """
-        "*** YOUR CODE HERE ***"
-        count = util.Counter()
-        if enemy == self.opponentIndices[0]:
-            for particle in self.particlesEnemy0:
-                count[particle] += 1
-            count.normalize()
-        if enemy == self.opponentIndices[1]:
-            for particle in self.particlesEnemy1:
-                count[particle] += 1
-            count.normalize()
-        return count
-
-    def getBestPositionEstimate(self, enemy):
-        belief = self.getBeliefDistribution(enemy)
-        return belief.argMax()
+#
+# class ParticleFilter:
+#     """
+#     A particle filter for approximately tracking a single ghost.
+#     Useful helper functions will include random.choice, which chooses an element
+#     from a list uniformly at random, and util.sample, which samples a key from a
+#     Counter by treating its values as probabilities.
+#     """
+#
+#     def __init__(self, numParticles=300):
+#         "Sets the ghost agent for later access"
+#         # ReflexCaptureAgent.registerInitialState(self, gameState)
+#         # self.index = index
+#         # self.players = self.getTeam(gameState)
+#         # self.obs = []  # most recent observation position
+#         self.setNumParticles(numParticles)
+#         # self.beliefDistribution = {}
+#         # self.opponents =
+#         # self.team = gameState.getTeam()
+#         # self.obs = []  # most recent observation position
+#         # self.setNumParticles(numParticles)
+#
+#     # def initializeBelief(self, enemy):
+#     #     allPossible = util.Counter()
+#     #     for pos in self.particles:
+#     #         allPossible[pos] += 1
+#     #     allPossible.normalize()
+#     #     self.beliefDistribution[enemy] = allPossible
+#     def registerInitialState(self, gameState, agent):
+#         self.legalPositions = gameState.getWalls().asList(False)
+#         # print self.legalPositions
+#         self.opponentIndices = agent.getOpponents(gameState)
+#         # print "------ris------"
+#         # print self.opponentIndices
+#         self.initializeUniformly()
+#
+#     def setNumParticles(self, numParticles):
+#         self.numParticles = numParticles
+#
+#     def getPositionDistribution(self, enemy):
+#         """
+#         Returns a distribution over successor positions of the ghost from the
+#         given gameState.
+#         You must first place the ghost in the gameState, using setGhostPosition
+#         below.
+#         """
+#         # print enemy
+#         x, y = enemy  # The position you set
+#         # print ghostPosition
+#         # actionDist = self.ghostAgent.getDistribution(gameState)
+#         # the ghost cannot fly so the possible ghost positions are up, down, left and right
+#         up = (x, y + 1)
+#         down = (x, y - 1)
+#         left = (x - 1, y)
+#         right = (x + 1, y)
+#         positions = [up, down, left, right]
+#         # print positions
+#         # print self.legalPositions
+#         possiblePositions = list(set(positions) & set(self.legalPositions))
+#         # print possiblePositions
+#
+#         # the actions have equal probability since the agent can take either of them
+#         actionDist = util.Counter()
+#         for pos in possiblePositions:
+#             actionDist[pos] += 1
+#         actionDist.normalize()
+#         return actionDist
+#
+#         # dist = util.Counter()
+#         # for action, prob in actionDist.items():
+#         #     successorPosition = game.Actions.getSuccessor(ghostPosition, action)
+#         #     dist[successorPosition] = prob
+#         # return dist
+#
+#     # def setGhostPosition(self, gameState, ghostPosition):
+#     #     """
+#     #     Sets the position of the ghost for this inference module to the
+#     #     specified position in the supplied gameState.
+#     #     Note that calling setGhostPosition does not change the position of the
+#     #     ghost in the GameState object used for tracking the true progression of
+#     #     the game.  The code in inference.py only ever receives a deep copy of
+#     #     the GameState object which is responsible for maintaining game state,
+#     #     not a reference to the original object.  Note also that the ghost
+#     #     distance observations are stored at the time the GameState object is
+#     #     created, so changing the position of the ghost will not affect the
+#     #     functioning of observeState.
+#     #     """
+#     #     conf = game.Configuration(ghostPosition, game.Directions.STOP)
+#     #     gameState.data.agentStates[self.index] = game.AgentState(conf, False)
+#     #     return gameState
+#
+#     def initializeUniformly(self, enemy=None):
+#         """
+#         Initializes a list of particles. Use self.numParticles for the number of
+#         particles. Use self.legalPositions for the legal board positions where a
+#         particle could be located.  Particles should be evenly (not randomly)
+#         distributed across positions in order to ensure a uniform prior.
+#         Note: the variable you store your particles in must be a list; a list is
+#         simply a collection of unweighted variables (positions in this case).
+#         Storing your particles as a Counter (where there could be an associated
+#         weight with each position) is incorrect and may produce errors.
+#         """
+#         "*** YOUR CODE HERE ***"
+#         # print self.numParticles
+#         # print self.legalPositions
+#         # making an empty list that will hold all my particles
+#         # self.setNumParticles(10000)
+#         # print self.numParticles
+#         self.particles = []
+#         # making a counter that will show how many particles I still have to allocate
+#         particlesLeft = self.numParticles
+#         # while there are still particles, we'll distribute them over the different positions
+#         # print self.legalPositions
+#         while particlesLeft != 0:
+#             # splitting up by position
+#             for x in self.legalPositions:
+#                 # checking again if there are still particles left, as we may have run out before hitting the while again
+#                 if particlesLeft != 0:
+#                     # add that position to the particles list
+#                     self.particles.append(x)
+#                     # we've allocated a particle, so subtract it from how many left.
+#                     particlesLeft -= 1
+#         # partition the particles into enemy one particles and enemy two particles or both at the beginning
+#         self.particlesEnemy0 = []
+#         self.particlesEnemy1 = []
+#         if enemy == self.opponentIndices[0]:
+#             self.particlesEnemy0 = self.particles
+#         if enemy == self.opponentIndices[1]:
+#             self.particlesEnemy1 = self.particles
+#         if enemy is None:
+#             self.particlesEnemy0 = self.particles
+#             self.particlesEnemy1 = self.particles
+#
+#         # if enemy == self.opponentIndices[0]
+#
+#         # print self.particles
+#         # print len(self.particles)
+#
+#     def observe(self, enemy, pacman, gameState):
+#         """
+#         Update beliefs based on the given distance observation. Make sure to
+#         handle the special case where all particles have weight 0 after
+#         reweighting based on observation. If this happens, resample particles
+#         uniformly at random from the set of legal positions
+#         (self.legalPositions).
+#         A correct implementation will handle two special cases:
+#           1) When a ghost is captured by Pacman, all particles should be updated
+#              so that the ghost appears in its prison cell,
+#              self.getJailPosition()
+#              As before, you can check if a ghost has been captured by Pacman by
+#              checking if it has a noisyDistance of None.
+#           2) When all particles receive 0 weight, they should be recreated from
+#              the prior distribution by calling initializeUniformly. The total
+#              weight for a belief distribution can be found by calling totalCount
+#              on a Counter object
+#         util.sample(Counter object) is a helper method to generate a sample from
+#         a belief distribution.
+#         You may also want to use util.manhattanDistance to calculate the
+#         distance between a particle and Pacman's position.
+#         """
+#         # print enemy
+#         # exit(1)
+#         noisyDistances = gameState.getAgentDistances()
+#         noisyDistance = noisyDistances[enemy]
+#         pacmanPosition = gameState.getAgentPosition(pacman)
+#         emissionModel = self.getBeliefDistribution(enemy)
+#         # print emissionModel
+#         "*** YOUR CODE HERE ***"
+#         allPossible = util.Counter()
+#         if noisyDistance is not None:
+#             for x in self.particles:
+#                 trueDistance = util.manhattanDistance(x, pacmanPosition)
+#                 prob = gameState.getDistanceProb(trueDistance, noisyDistance)
+#                 allPossible[x] = emissionModel[x] * prob
+#
+#             # check if all 0
+#             if allPossible.totalCount() == 0:
+#                 self.initializeUniformly(gameState)
+#             else:
+#                 # resample
+#                 newParticles = []
+#                 for i in range(self.numParticles):
+#                     newParticles.append(util.sample(allPossible))
+#                 # update the new particles based on the likelihood of the different positions
+#                 if enemy == self.opponentIndices[0]:
+#                     self.particlesEnemy0 = newParticles
+#                 if enemy == self.opponentIndices[1]:
+#                     self.particlesEnemy1 = newParticles
+#
+#     def elapseTime(self, enemy, gameState):
+#         """
+#         Update beliefs for a time step elapsing.
+#         As in the elapseTime method of ExactInference, you should use:
+#           newPosDist = self.getPositionDistribution(self.setGhostPosition(gameState, oldPos))
+#         to obtain the distribution over new positions for the ghost, given its
+#         previous position (oldPos) as well as Pacman's current position.
+#         util.sample(Counter object) is a helper method to generate a sample from
+#         a belief distribution.
+#         """
+#         "*** YOUR CODE HERE ***"
+#         # print enemy
+#         # print self.opponentIndices[0], self.opponentIndices[1]
+#         if enemy == self.opponentIndices[0]:
+#             # i basically changed what was done earlier to account for particles in a list instead of a counter.
+#             # create a new list
+#             particles = []
+#             # loop over the list of particles (basically valid positions)
+#             # print self.particles
+#             for oldPos in self.particlesEnemy0:
+#                 # same as before
+#                 newPosDist = self.getPositionDistribution(oldPos)
+#                 # we generate the sample from the pos dist found and append the result to the new list
+#                 particles.append(util.sample(newPosDist))
+#             # we set the particle list to the new sampled one, updating it!
+#             # update the new particles based on the likelihood of the different positions
+#             self.particlesEnemy0 = particles
+#         if enemy == self.opponentIndices[1]:
+#             # i basically changed what was done earlier to account for particles in a list instead of a counter.
+#             # create a new list
+#             particles = []
+#             # loop over the list of particles (basically valid positions)
+#             # print self.particles
+#             for oldPos in self.particlesEnemy1:
+#                 # same as before
+#                 newPosDist = self.getPositionDistribution(oldPos)
+#                 # we generate the sample from the pos dist found and append the result to the new list
+#                 particles.append(util.sample(newPosDist))
+#             # we set the particle list to the new sampled one, updating it!
+#             # update the new particles based on the likelihood of the different positions
+#             self.particlesEnemy1 = particles
+#
+#     def getBeliefDistribution(self, enemy):
+#         """
+#         Return the agent's current belief state, a distribution over ghost
+#         locations conditioned on all evidence and time passage. This method
+#         essentially converts a list of particles into a belief distribution (a
+#         Counter object)
+#         """
+#         "*** YOUR CODE HERE ***"
+#         count = util.Counter()
+#         if enemy == self.opponentIndices[0]:
+#             for particle in self.particlesEnemy0:
+#                 count[particle] += 1
+#             count.normalize()
+#         if enemy == self.opponentIndices[1]:
+#             for particle in self.particlesEnemy1:
+#                 count[particle] += 1
+#             count.normalize()
+#         return count
+#
+#     def getBestPositionEstimate(self, enemy):
+#         belief = self.getBeliefDistribution(enemy)
+#         return belief.argMax()
